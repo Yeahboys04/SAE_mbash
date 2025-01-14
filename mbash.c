@@ -29,8 +29,10 @@ char* remplacer_variable(char *commande) {
     if (commande[0] == '$') {
         char *variable = getenv(commande + 1); // Récupérer la variable d'environnement sans le '$'
         if (variable != NULL) {
+            printf("[INFO] Remplacement de la variable d'environnement : %s\n", commande);
             return variable; // Retourner la valeur de la variable
         } else {
+            printf("[ERROR] Variable d'environnement '%s' non trouvée.\n", commande);
             return ""; // Retourner une chaîne vide si la variable n'existe pas
         }
     }
@@ -43,6 +45,7 @@ void remplacer_motifs(char *commande) {
     if (glob(commande, 0, NULL, &glob_res) == 0) {
         if (glob_res.gl_pathc > 0) {
             strcpy(commande, glob_res.gl_pathv[0]);
+            printf("[INFO] Remplacement des motifs : %s\n", commande);
         }
     }
     globfree(&glob_res);
@@ -52,7 +55,7 @@ void remplacer_motifs(char *commande) {
 char *chercher_commande_dans_path(char *commande) {
     char *path_env = getenv("PATH");
     if (path_env == NULL) {
-        fprintf(stderr, "Erreur : la variable d'environnement PATH est absente.\n");
+        printf("[ERROR] La variable d'environnement PATH est absente.\n");
         return NULL;
     }
 
@@ -75,6 +78,7 @@ char *chercher_commande_dans_path(char *commande) {
     }
 
     free(path_copy);
+    printf("[ERROR] Commande '%s' introuvable dans PATH.\n", commande);
     return NULL; // Commande non trouvée
 }
 
@@ -93,20 +97,20 @@ void executer_commande(char **arguments, int en_arriere_plan) {
             }
 
             if (execve(chemin_commande, arguments, environ) == -1) {
-                fprintf(stderr, "Erreur : impossible d'exécuter la commande '%s' (%s).\n", arguments[0], strerror(errno));
+                printf("[ERROR] Impossible d'exécuter la commande '%s' (%s).\n", arguments[0], strerror(errno));
             }
 
             free(chemin_commande); // Libérer la mémoire allouée pour le chemin
         } else {
-            fprintf(stderr, "Erreur : commande '%s' introuvable.\n", arguments[0]);
+            printf("[ERROR] Commande '%s' introuvable.\n", arguments[0]);
         }
         exit(EXIT_FAILURE);
     } else if (pid < 0) {
-        fprintf(stderr, "Erreur : échec de la création du processus (%s).\n", strerror(errno));
+        printf("[ERROR] Échec de la création du processus (%s).\n", strerror(errno));
     } else {
         // Processus parent
         if (en_arriere_plan) {
-            printf("[PID %d] %s\n", pid, arguments[0]);  // Afficher le PID
+            printf("[INFO] Exécution en arrière-plan : PID %d, Commande : %s\n", pid, arguments[0]);
         } else {
             waitpid(pid, NULL, 0);
         }
@@ -141,24 +145,26 @@ void analyser_et_executer_ligne(char *ligne) {
                 if (arguments[1] != NULL) {
                     changer_repertoire(arguments[1]);
                 } else {
-                    fprintf(stderr, "Erreur : Veuillez spécifier un répertoire avec 'cd'.\n");
+                    printf("[ERROR] Veuillez spécifier un répertoire avec 'cd'.\n");
                 }
             } else if (strcmp(arguments[0], "pwd") == 0) {
                 afficher_repertoire_courant();
             } else if (strcmp(arguments[0], "exit") == 0) {
+                printf("[INFO] Sortie de mbash. À bientôt !\n");
                 exit(0);
             } else if (strcmp(arguments[0], "echo") == 0) {
                 for (int i = 1; arguments[i] != NULL; i++) {
                     char *valeur = remplacer_variable(arguments[i]);
-                    printf("%s ", valeur);
+                    printf("[RESULT] %s ", valeur);
                 }
                 printf("\n");
             } else if (strcmp(arguments[0], "set") == 0) {
                 // Exemple : set NOM_VARIABLE valeur
                 if (arguments[1] != NULL && arguments[2] != NULL) {
                     setenv(arguments[1], arguments[2], 1); // Définir la variable sans $
+                    printf("[INFO] Variable d'environnement '%s' définie à '%s'.\n", arguments[1], arguments[2]);
                 } else {
-                    fprintf(stderr, "Erreur : utilisation de 'set' incorrecte.\n");
+                    printf("[ERROR] Utilisation de 'set' incorrecte.\n");
                 }
             } else {
                 executer_commande(arguments, en_arriere_plan);
@@ -172,9 +178,11 @@ void analyser_et_executer_ligne(char *ligne) {
 // Fonction pour changer de répertoire
 void changer_repertoire(char *chemin) {
     if (chemin == NULL) {
-        fprintf(stderr, "Erreur : veuillez spécifier un répertoire.\n");
+        printf("[ERROR] Veuillez spécifier un répertoire.\n");
     } else if (chdir(chemin) == -1) {
-        fprintf(stderr, "Erreur cd : impossible d'accéder au répertoire '%s' (%s).\n", chemin, strerror(errno));
+        printf("[ERROR] Impossible d'accéder au répertoire '%s' (%s).\n", chemin, strerror(errno));
+    } else {
+        printf("[INFO] Changement de répertoire vers '%s'.\n", chemin);
     }
 }
 
@@ -182,9 +190,9 @@ void changer_repertoire(char *chemin) {
 void afficher_repertoire_courant() {
     char chemin[TAILLE_MAX_COMMANDE];
     if (getcwd(chemin, sizeof(chemin)) != NULL) {
-        printf("%s\n", chemin);
+        printf("[RESULT] Répertoire courant : %s\n", chemin);
     } else {
-        fprintf(stderr, "Erreur pwd : impossible de récupérer le répertoire courant (%s).\n", strerror(errno));
+        printf("[ERROR] Impossible de récupérer le répertoire courant (%s).\n", strerror(errno));
     }
 }
 
@@ -211,7 +219,7 @@ int main() {
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP; // Réactiver les appels système interrompus
     sigemptyset(&sa.sa_mask);
     if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-        perror("Erreur : Impossible de configurer SIGCHLD");
+        perror("[ERROR] Impossible de configurer SIGCHLD");
         exit(EXIT_FAILURE);
     }
 
@@ -222,7 +230,7 @@ int main() {
 
         // Lecture de la commande
         if (fgets(ligne, TAILLE_MAX_COMMANDE, stdin) == NULL) {
-            printf("\nQuitter mbash\n");
+            printf("[INFO] Quitter mbash\n");
             break;
         }
 
