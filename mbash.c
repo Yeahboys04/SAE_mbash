@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <glob.h>
+#include <signal.h>
 
 // Taille maximale pour une ligne de commande
 #define TAILLE_MAX_COMMANDE 1024
@@ -21,6 +22,7 @@ void analyser_et_executer_ligne(char *ligne);
 char* remplacer_variable(char *commande);
 void remplacer_motifs(char *commande);
 char *chercher_commande_dans_path(char *commande);
+void gestionnaire_sigchld(int sig);
 
 // Fonction pour remplacer une variable d'environnement par sa valeur
 char* remplacer_variable(char *commande) {
@@ -186,6 +188,14 @@ void afficher_repertoire_courant() {
     }
 }
 
+// Gestionnaire de signaux pour SIGCHLD
+void gestionnaire_sigchld(int sig) {
+    (void)sig; // Éviter les avertissements pour le paramètre inutilisé
+    while (waitpid(-1, NULL, WNOHANG) > 0) {
+        // Récupérer les processus enfants terminés
+    }
+}
+
 // Fonction principale
 int main() {
     char ligne[TAILLE_MAX_COMMANDE];
@@ -193,6 +203,16 @@ int main() {
 
     if (!ps1) {
         ps1 = "mbash> "; // Valeur par défaut si PS1 n'est pas défini
+    }
+
+    // Configurer le gestionnaire pour SIGCHLD
+    struct sigaction sa;
+    sa.sa_handler = gestionnaire_sigchld;
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP; // Réactiver les appels système interrompus
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("Erreur : Impossible de configurer SIGCHLD");
+        exit(EXIT_FAILURE);
     }
 
     while (1) {
